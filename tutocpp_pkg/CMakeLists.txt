@@ -44,6 +44,9 @@ ament_target_dependencies(LED_server_node rclcpp gonca_interfaces)
 add_executable(LED_client_node src/activity_04_client.cpp)
 ament_target_dependencies(LED_client_node rclcpp gonca_interfaces)
 
+add_executable(robot_publisher src/activity_05_pub.cpp)
+ament_target_dependencies(robot_publisher rclcpp example_interfaces)
+
 install(TARGETS
   cpp_node
   publisher_node
@@ -56,6 +59,7 @@ install(TARGETS
   hw_info_subscriber
   LED_server_node
   LED_client_node
+  robot_publisher
   DESTINATION lib/${PROJECT_NAME}
 )
 

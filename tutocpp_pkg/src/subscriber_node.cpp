@@ -6,7 +6,9 @@ class SubscriberNode : public rclcpp::Node
 public:
     SubscriberNode() : Node("subscriberCpp")
     {
-        subscriber_ = create_subscription<example_interfaces::msg::String>("first_publisher", 10,
+        declare_parameter("topic_name", "first_publisher");
+        get_parameter("topic_name", topic_name);
+        subscriber_ = create_subscription<example_interfaces::msg::String>(topic_name, 10,
                                                                            std::bind(&SubscriberNode::publisherCallBack,
                                                                                      this, std::placeholders::_1));
         RCLCPP_INFO(get_logger(), "Subscriber cpp Node has been started");
@@ -14,6 +16,7 @@ public:
 
 private:
     rclcpp::Subscription<example_interfaces::msg::String>::SharedPtr subscriber_;
+    std::string topic_name;
 
     void publisherCallBack(const example_interfaces::msg::String::SharedPtr msg)
     {
