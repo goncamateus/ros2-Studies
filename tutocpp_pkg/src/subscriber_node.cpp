@@ -1,5 +1,5 @@
 #include "rclcpp/rclcpp.hpp"
-#include "example_interfaces/msg/string.hpp"
+#include "example_interfaces/msg/int16.hpp"
 
 class SubscriberNode : public rclcpp::Node
 {
@@ -8,19 +8,19 @@ public:
     {
         declare_parameter("topic_name", "first_publisher");
         get_parameter("topic_name", topic_name);
-        subscriber_ = create_subscription<example_interfaces::msg::String>(topic_name, 10,
-                                                                           std::bind(&SubscriberNode::publisherCallBack,
-                                                                                     this, std::placeholders::_1));
+        subscriber_ = create_subscription<example_interfaces::msg::Int16>(topic_name, 10,
+                                                                          std::bind(&SubscriberNode::publisherCallBack,
+                                                                                    this, std::placeholders::_1));
         RCLCPP_INFO(get_logger(), "Subscriber cpp Node has been started");
     }
 
 private:
-    rclcpp::Subscription<example_interfaces::msg::String>::SharedPtr subscriber_;
+    rclcpp::Subscription<example_interfaces::msg::Int16>::SharedPtr subscriber_;
     std::string topic_name;
 
-    void publisherCallBack(const example_interfaces::msg::String::SharedPtr msg)
+    void publisherCallBack(const example_interfaces::msg::Int16::SharedPtr msg)
     {
-        RCLCPP_INFO(get_logger(), "%s", msg->data.c_str());
+        RCLCPP_INFO(get_logger(), "%d", msg->data);
     }
 };
 
