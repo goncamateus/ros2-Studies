@@ -7,6 +7,12 @@
 struct TurtlePose
 {
     double x, y, theta, linear_velocity, angular_velocity;
+    bool operator==(const TurtlePose &rhs) const
+    {
+        bool ex = x == rhs.x;
+        bool ey = y == rhs.y;
+        return ex && ey;
+    }
 };
 
 class TurtleSpawnNode : public rclcpp::Node
@@ -21,11 +27,10 @@ public:
         posePublisher_ = create_publisher<turtlesim::msg::Pose>("target_turtle", 10);
         pubTimer_ = create_wall_timer(std::chrono::milliseconds(100), std::bind(&TurtleSpawnNode::targetCallback, this));
         spawnTimer_ = create_wall_timer(std::chrono::milliseconds(500), std::bind(&TurtleSpawnNode::spawnCallback, this));
-        killTimer_ = create_wall_timer(std::chrono::milliseconds(501), std::bind(&TurtleSpawnNode::killCallback, this));
     }
 
 private:
-    rclcpp::TimerBase::SharedPtr pubTimer_, spawnTimer_, killTimer_;
+    rclcpp::TimerBase::SharedPtr pubTimer_, spawnTimer_;
     rclcpp::Publisher<turtlesim::msg::Pose>::SharedPtr posePublisher_;
     rclcpp::Subscription<turtlesim::msg::Pose>::SharedPtr poseSub_;
     TurtlePose actualPose;
@@ -50,24 +55,22 @@ private:
         return randPose;
     }
 
-    void killCallback()
+    void killTurtle()
     {
-        if (targetCounter > 3)
+        if (targetsPose.size() > 0)
         {
             int wichTurtle = targetCounter - targetsPose.size() + 1;
             std::string turtleName = "turtle" + std::to_string(wichTurtle);
             killThreads.push_back(
                 std::make_shared<std::thread>(
-                    std::bind(&TurtleSpawnNode::callKillService, this, turtleName)
-                )
-            );
+                    std::bind(&TurtleSpawnNode::callKillService, this, turtleName)));
         }
     }
 
     void callKillService(std::string turtleName)
     {
         auto client = create_client<turtlesim::srv::Kill>("kill");
-        while(!client->wait_for_service(std::chrono::milliseconds(100)))
+        while (!client->wait_for_service(std::chrono::milliseconds(100)))
         {
             RCLCPP_WARN(get_logger(), "Kill client waiting for server");
         }
@@ -82,12 +85,11 @@ private:
             targetsPose.erase(targetsPose.begin());
             RCLCPP_INFO(get_logger(), "%s has been killed succesfully", turtleName.c_str());
         }
-        catch(const std::exception& e)
+        catch (const std::exception &e)
         {
             targetCounter++;
             RCLCPP_ERROR(get_logger(), e.what());
         }
-        
     }
 
     void spawnCallback()
@@ -129,13 +131,16 @@ private:
 
     void targetCallback()
     {
-        auto msg = turtlesim::msg::Pose();
-        msg.x = targetsPose[targetsPose.size() - 1].x;
-        msg.y = targetsPose[targetsPose.size() - 1].y;
-        msg.theta = targetsPose[targetsPose.size() - 1].theta;
-        msg.linear_velocity = targetsPose[targetsPose.size() - 1].linear_velocity;
-        msg.angular_velocity = targetsPose[targetsPose.size() - 1].angular_velocity;
-        posePublisher_->publish(msg);
+        if (targetsPose.size() > 0)
+        {
+            auto msg = turtlesim::msg::Pose();
+            msg.x = targetsPose[0].x;
+            msg.y = targetsPose[0].y;
+            msg.theta = targetsPose[0].theta;
+            msg.linear_velocity = targetsPose[0].linear_velocity;
+            msg.angular_velocity = targetsPose[0].angular_velocity;
+            posePublisher_->publish(msg);
+        }
     }
 
     void playerCallback(turtlesim::msg::Pose::SharedPtr msg)
@@ -145,6 +150,9 @@ private:
         actualPose.theta = msg->theta;
         actualPose.linear_velocity = msg->linear_velocity;
         actualPose.angular_velocity = msg->angular_velocity;
+        bool isOnTarget = actualPose == targetsPose[0];
+        if (isOnTarget)
+            killTurtle();
     }
 };
 
