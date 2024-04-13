@@ -10,6 +10,8 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(example_interfaces REQUIRED)
 find_package(gonca_interfaces REQUIRED)
+find_package(turtlesim REQUIRED)
+find_package(std_srvs REQUIRED)
 
 add_executable(cpp_node src/my_first_node.cpp)
 ament_target_dependencies(cpp_node rclcpp)
@@ -47,6 +49,9 @@ ament_target_dependencies(LED_client_node rclcpp gonca_interfaces)
 add_executable(robot_publisher src/activity_05_pub.cpp)
 ament_target_dependencies(robot_publisher rclcpp example_interfaces)
 
+add_executable(turtle_spawn src/turtle_spawn.cpp)
+ament_target_dependencies(turtle_spawn rclcpp example_interfaces turtlesim std_srvs)
+
 install(TARGETS
   cpp_node
   publisher_node
@@ -60,6 +65,7 @@ install(TARGETS
   LED_server_node
   LED_client_node
   robot_publisher
+  turtle_spawn
   DESTINATION lib/${PROJECT_NAME}
 )
 
