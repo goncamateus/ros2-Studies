@@ -52,6 +52,9 @@ ament_target_dependencies(robot_publisher rclcpp example_interfaces)
 add_executable(turtle_spawn src/turtle_spawn.cpp)
 ament_target_dependencies(turtle_spawn rclcpp example_interfaces turtlesim std_srvs)
 
+add_executable(turtle_follow src/turtle_follow.cpp)
+ament_target_dependencies(turtle_follow rclcpp example_interfaces turtlesim std_srvs)
+
 install(TARGETS
   cpp_node
   publisher_node
@@ -66,6 +69,7 @@ install(TARGETS
   LED_client_node
   robot_publisher
   turtle_spawn
+  turtle_follow
   DESTINATION lib/${PROJECT_NAME}
 )
 

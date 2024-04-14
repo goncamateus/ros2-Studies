@@ -9,39 +9,55 @@ struct TurtlePose
     double x, y, theta, linear_velocity, angular_velocity;
     bool operator==(const TurtlePose &rhs) const
     {
-        bool ex = x == rhs.x;
-        bool ey = y == rhs.y;
+        bool ex = abs(x - rhs.x) < 0.1;
+        bool ey = abs(y - rhs.y) < 0.1;
         return ex && ey;
     }
+};
+
+struct Turtle
+{
+    std::string name;
+    TurtlePose pose;
+    bool alive;
 };
 
 class TurtleSpawnNode : public rclcpp::Node
 {
 public:
-    TurtleSpawnNode() : Node("turtle_spawn"), targetCounter(2)
+    TurtleSpawnNode() : Node("turtle_spawn"), turtleCounter(2)
     {
-        actualPose = TurtlePose();
-        targetsPose.clear();
-        targetsPose.push_back(getRandomPose());
-        poseSub_ = create_subscription<turtlesim::msg::Pose>("/turtle1/pose", 10, std::bind(&TurtleSpawnNode::playerCallback, this, std::placeholders::_1));
-        posePublisher_ = create_publisher<turtlesim::msg::Pose>("target_turtle", 10);
-        pubTimer_ = create_wall_timer(std::chrono::milliseconds(100), std::bind(&TurtleSpawnNode::targetCallback, this));
-        spawnTimer_ = create_wall_timer(std::chrono::milliseconds(500), std::bind(&TurtleSpawnNode::spawnCallback, this));
+        this->actualPose = TurtlePose();
+        this->targets.clear();
+        this->poseSub_ = create_subscription<turtlesim::msg::Pose>("/turtle1/pose", 10, std::bind(&TurtleSpawnNode::playerCallback, this, std::placeholders::_1));
+        this->posePublisher_ = create_publisher<turtlesim::msg::Pose>("target_turtle", 10);
+        this->pubTimer_ = create_wall_timer(std::chrono::milliseconds(250), std::bind(&TurtleSpawnNode::targetCallback, this));
+        this->spawnTimer_ = create_wall_timer(std::chrono::milliseconds(500), std::bind(&TurtleSpawnNode::spawnCallback, this));
+        RCLCPP_INFO(get_logger(), "TurtleControl node started");
     }
 
 private:
-    rclcpp::TimerBase::SharedPtr pubTimer_, spawnTimer_;
+    rclcpp::TimerBase::SharedPtr pubTimer_, spawnTimer_, killTimer_;
     rclcpp::Publisher<turtlesim::msg::Pose>::SharedPtr posePublisher_;
     rclcpp::Subscription<turtlesim::msg::Pose>::SharedPtr poseSub_;
     TurtlePose actualPose;
-    std::vector<TurtlePose> targetsPose;
+    std::vector<Turtle> targets;
     std::vector<std::shared_ptr<std::thread>> spawnThreads;
     std::vector<std::shared_ptr<std::thread>> killThreads;
-    int targetCounter;
+    int turtleCounter;
 
     double getRandom(double low, double high)
     {
         return low + static_cast<double>(rand()) / (static_cast<double>(RAND_MAX / (high - low)));
+    }
+
+    Turtle createRandomTurtle()
+    {
+        auto pose = getRandomPose();
+        auto name = "turtle" + std::to_string(this->turtleCounter);
+        Turtle turtle = {name, pose, true};
+        this->turtleCounter++;
+        return turtle;
     }
 
     TurtlePose getRandomPose()
@@ -55,15 +71,52 @@ private:
         return randPose;
     }
 
+    void spawnCallback()
+    {
+        auto newTurtle = createRandomTurtle();
+        spawnThreads.push_back(
+            std::make_shared<std::thread>(
+                std::bind(&TurtleSpawnNode::callSpawnService, this, newTurtle)));
+    }
+
+    void callSpawnService(Turtle newTurtle)
+    {
+        auto client = create_client<turtlesim::srv::Spawn>("spawn");
+        while (!client->wait_for_service(std::chrono::milliseconds(100)))
+        {
+            RCLCPP_WARN(get_logger(), "Spawn client waiting for server");
+        }
+
+        auto request = std::make_shared<turtlesim::srv::Spawn::Request>();
+        request->x = newTurtle.pose.x;
+        request->y = newTurtle.pose.y;
+        request->theta = newTurtle.pose.theta;
+        request->name = newTurtle.name;
+
+        auto future = client->async_send_request(request);
+
+        try
+        {
+            auto response = future.get();
+            this->targets.push_back(newTurtle);
+        }
+        catch (const std::exception &e)
+        {
+            RCLCPP_ERROR(get_logger(), e.what());
+        }
+    }
+
     void killTurtle()
     {
-        if (targetsPose.size() > 0)
+        if (this->targets.size() > 0)
         {
-            int wichTurtle = targetCounter - targetsPose.size() + 1;
-            std::string turtleName = "turtle" + std::to_string(wichTurtle);
-            killThreads.push_back(
-                std::make_shared<std::thread>(
-                    std::bind(&TurtleSpawnNode::callKillService, this, turtleName)));
+            if (this->targets[0].pose == this->actualPose && this->targets[0].alive)
+            {
+                this->targets[0].alive = false;
+                killThreads.push_back(
+                    std::make_shared<std::thread>(
+                        std::bind(&TurtleSpawnNode::callKillService, this, this->targets[0].name)));
+            }
         }
     }
 
@@ -82,46 +135,7 @@ private:
         try
         {
             auto response = future.get();
-            targetsPose.erase(targetsPose.begin());
-            RCLCPP_INFO(get_logger(), "%s has been killed succesfully", turtleName.c_str());
-        }
-        catch (const std::exception &e)
-        {
-            targetCounter++;
-            RCLCPP_ERROR(get_logger(), e.what());
-        }
-    }
-
-    void spawnCallback()
-    {
-        TurtlePose randPose(getRandomPose());
-        targetsPose.push_back(randPose);
-        spawnThreads.push_back(
-            std::make_shared<std::thread>(
-                std::bind(&TurtleSpawnNode::callSpawnService, this, randPose, targetCounter)));
-        targetCounter++;
-    }
-
-    void callSpawnService(TurtlePose pose, int targetCounter)
-    {
-        auto client = create_client<turtlesim::srv::Spawn>("spawn");
-        while (!client->wait_for_service(std::chrono::milliseconds(100)))
-        {
-            RCLCPP_WARN(get_logger(), "Spawn client waiting for server");
-        }
-
-        auto request = std::make_shared<turtlesim::srv::Spawn::Request>();
-        request->x = pose.x;
-        request->y = pose.y;
-        request->theta = pose.theta;
-        request->name = "turtle" + std::to_string(targetCounter);
-
-        auto future = client->async_send_request(request);
-
-        try
-        {
-            auto response = future.get();
-            RCLCPP_INFO(get_logger(), "Turtle %s has been spawned!! GO GET IT!!", response->name.c_str());
+            this->targets.erase(this->targets.begin());
         }
         catch (const std::exception &e)
         {
@@ -131,14 +145,14 @@ private:
 
     void targetCallback()
     {
-        if (targetsPose.size() > 0)
+        if (this->targets.size() > 0)
         {
             auto msg = turtlesim::msg::Pose();
-            msg.x = targetsPose[0].x;
-            msg.y = targetsPose[0].y;
-            msg.theta = targetsPose[0].theta;
-            msg.linear_velocity = targetsPose[0].linear_velocity;
-            msg.angular_velocity = targetsPose[0].angular_velocity;
+            msg.x = this->targets[this->targets.size() - 1].pose.x;
+            msg.y = this->targets[this->targets.size() - 1].pose.y;
+            msg.theta = this->targets[this->targets.size() - 1].pose.theta;
+            msg.linear_velocity = this->targets[this->targets.size() - 1].pose.linear_velocity;
+            msg.angular_velocity = this->targets[this->targets.size() - 1].pose.angular_velocity;
             posePublisher_->publish(msg);
         }
     }
@@ -150,9 +164,7 @@ private:
         actualPose.theta = msg->theta;
         actualPose.linear_velocity = msg->linear_velocity;
         actualPose.angular_velocity = msg->angular_velocity;
-        bool isOnTarget = actualPose == targetsPose[0];
-        if (isOnTarget)
-            killTurtle();
+        killTurtle();
     }
 };
 
